@@ -77,6 +77,7 @@ tokenize' Chunk (Lambda ts (Just (Lambda ts' p))) (']':xs) =
   tokenize' Chunk (Lambda (ts' ++ [Lambda ts Nothing]) p) xs
 tokenize' Chunk p ('{':xs) = tokenize' (Comment 1) p xs
 tokenize' Chunk p ('}':xs) = error "Unbalanced }"
+tokenize' (Comment _) p "" = error "Unterminated comment"
 tokenize' (Comment n) p ('{':xs) = tokenize' (Comment $ n + 1) p xs
 tokenize' (Comment 1) p ('}':xs) = tokenize' Chunk p xs
 tokenize' (Comment n) p ('}':xs) = tokenize' (Comment $ n - 1) p xs
