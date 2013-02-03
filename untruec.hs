@@ -71,6 +71,7 @@ tokenize s =
 -- lambda. Unknown characters (like whitespace) are simply skipped.
 tokenize' :: TokenizerState -> Token -> String -> Token
 tokenize' Chunk token@(Lambda _ Nothing) "" = token
+tokenize' Chunk (Lambda _ _) "" = error "Unterminated lambda"
 tokenize' Chunk p ('[':xs) = tokenize' Chunk (Lambda [] (Just p)) xs
 tokenize' Chunk (Lambda _ Nothing) (']':xs) = error "Unbalanced ]"
 tokenize' Chunk (Lambda ts (Just (Lambda ts' p))) (']':xs) =
