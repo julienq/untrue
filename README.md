@@ -1,8 +1,6 @@
 untrue
 ======
 
-================================================================================
-
 Compiler and VM for the untrue language, which is pretty much the same as the
 [FALSE language](http://strlen.com/false-language), with a few differences:
 
