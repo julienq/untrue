@@ -1,6 +1,6 @@
 GHC = ghc
 RM = rm -f
-CFLAGS = -Wall
+CFLAGS = -Weverything -Werror
 
 all:	untruec untrue
 
@@ -11,6 +11,12 @@ untruec:	untruec.hs
 untrue:	untrue.c
 	$(CC) $< -o $@
 
-.PHONY:	clean
+%.uc:	%.u all
+	./untruec < $< > $@
+
+.PHONY:	clean realclean
 clean:
 	-$(RM) untruec untrue
+
+realclean: clean
+	-$(RM) *.uc

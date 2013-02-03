@@ -93,7 +93,7 @@ generate' m n ((LiteralNumber n'):xs) =
   in C.append n'' (generate' m (n + C.length n'') xs)
 generate' m n ((Global c):xs) =
   let c' = generate'' $ LiteralNumber $ 4 * (ord c - ord 'a') + 6
-  in C.append c' (generate' m (m + C.length c') xs)
+  in C.append c' (generate' m (n + C.length c') xs)
 generate' m n ((Lambda ys _):xs) =
   let xs' = generate' m (n + 4) xs
       m' = n + 4 + C.length xs'
