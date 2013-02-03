@@ -148,24 +148,24 @@ void call(machine *m, int r) {
 #endif
     } else if (op == Swap) {
       v = m->stack[m->sp];
-      m->stack[m->sp] = m->stack[m->sp - 1];
-      m->stack[m->sp - 1] = v;
+      m->stack[m->sp] = m->stack[m->sp + 1];
+      m->stack[m->sp + 1] = v;
 #ifdef TRACE
       fprintf(stderr, "Swap [%08x %08x ...]\n", m->stack[m->sp],
-          m->stack[m->sp - 1]);
+          m->stack[m->sp + 1]);
 #endif
     } else if (op == Rot) {
       v = m->stack[m->sp];
-      m->stack[m->sp] = m->stack[m->sp - 1];
-      m->stack[m->sp - 1] = m->stack[m->sp - 2];
-      m->stack[m->sp - 2] = v;
+      m->stack[m->sp] = m->stack[m->sp + 2];
+      m->stack[m->sp + 2] = m->stack[m->sp + 1];
+      m->stack[m->sp + 1] = v;
 #ifdef TRACE
       fprintf(stderr, "Rot [%08x %08x %08x ...]\n", m->stack[m->sp],
-          m->stack[m->sp - 1], m->stack[m->sp - 2]);
+          m->stack[m->sp + 1], m->stack[m->sp + 2]);
 #endif
     } else if (op == Pick) {
       v = pop(m);
-      push(m, m->stack[m->sp - v]);
+      push(m, m->stack[m->sp + v]);
 #ifdef TRACE
       fprintf(stderr, "Pick [%08x ...]\n", m->stack[m->sp]);
 #endif
