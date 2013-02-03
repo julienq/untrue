@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define STACK_SIZE 256
+#define STACK_SIZE 1024
 #define MEMORY_INCR 256
 
 typedef struct {
@@ -10,6 +10,10 @@ typedef struct {
   unsigned char **ip;
   unsigned char **stack;
 } machine;
+
+void run(machine *m, unsigned char **ip) {
+  m->ip = ip;
+}
 
 void dump_ram(machine *m) {
   size_t n;
@@ -62,12 +66,15 @@ void dump_ram(machine *m) {
       fprintf(stderr, "While\n");
     } else if (m->ram[i] == 0x95) {
       fprintf(stderr, "Puts\n");
-      n = m->ram[i++] << 24 | m->ram[i++] << 16 | m->ram[i++] << 8 |
-        m->ram[i++];
-      for (size_t j = i; j < n; ++j) {
-        fprintf(stderr, "%c", m->ram[i++]);
+      fprintf(stderr, "%08zx ", i + 1);
+      n = m->ram[++i] << 24 | m->ram[++i] << 16 | m->ram[++i] << 8 |
+        m->ram[++i];
+      fprintf(stderr, "%08zx\n%08zx \"", n, ++i);
+      for (size_t j = 0; j < n; ++j) {
+        fprintf(stderr, "%c", m->ram[i + j]);
       }
-      fprintf(stderr, "\n");
+      fprintf(stderr, "\"\n");
+      i += n - 1;
     } else if (m->ram[i] == 0x96) {
       fprintf(stderr, "Puti\n");
     } else if (m->ram[i] == 0x97) {
@@ -83,6 +90,7 @@ int main(int argc, char *argv[]) {
   size_t n = 0;
   m.cap = MEMORY_INCR;
   m.ram = (unsigned char *)malloc(m.cap);
+  m.stack = (unsigned char **)malloc(sizeof(unsigned char *) * STACK_SIZE);
   for (unsigned char c = fgetc(stdin); !feof(stdin); c = fgetc(stdin)) {
     if (n == m.cap) {
       m.cap += MEMORY_INCR;
@@ -92,5 +100,6 @@ int main(int argc, char *argv[]) {
   }
   m.cap = n;
   dump_ram(&m);
+  run(&m, m.stack);
   return 0;
 }
