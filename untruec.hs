@@ -1,8 +1,5 @@
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
-import qualified Data.List as L
-import Data.Word
-
 import Data.Bits
 import Data.Char
 import Data.Int
@@ -39,7 +36,6 @@ opcode p = chr $ fromJust $ lookup p opcodes
 data Token = Function Primitive | LiteralString C.ByteString |
              LiteralNumber Int | Global Char | Lambda [Token] (Maybe Token)
   deriving Show
-
 
 data TokenizerState = Chunk | StringToken C.ByteString | NumberToken Int |
                       Comment | Quote
@@ -100,7 +96,7 @@ generate' m n ((Global c):xs) =
   in C.append c' (generate' m (m + C.length c') xs)
 generate' m n ((Lambda ys _):xs) =
   let xs' = generate' m (n + 4) xs
-      m' = m + n + 4 + C.length xs'
+      m' = n + 4 + C.length xs'
       ys' = generate' m' m' ys
   in C.append (generate'' $ LiteralNumber m') $ C.append xs' ys'
 
