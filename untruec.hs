@@ -60,11 +60,12 @@ data TokenizerState = Chunk | StringToken C.ByteString | NumberToken Int |
 -- actual start of program, followed by a Ret which will halt the machine
 tokenize :: B.ByteString -> Token
 tokenize s =
-  let globals = [LiteralNumber 0 | x <- ['a' .. 'z']]
-      start = 6 + 4 * length globals
-  in tokenize' Chunk
-       (Lambda ([LiteralNumber start, Function Call, Function Ret] ++ globals)
-       Nothing) (C.unpack s)
+  let globals = replicate (length ['a' .. 'z'] * 4) (LiteralNumber 0)
+      init = (Function Call) : (Function Ret) : globals
+      l = length init
+      start = l + n_length l
+      init' = (LiteralNumber start) : init
+  in tokenize' Chunk (Lambda init' Nothing) (C.unpack s)
 
 -- The tokenizer keeps track of its state and the current lambda being
 -- constructed. It reads one character at a time, adding tokens to the current
@@ -111,7 +112,7 @@ generate :: Token -> C.ByteString
 generate (Lambda xs _) = generate' 0 0 xs
 
 -- Generate code for a list of token. Keep track of the start location of that
--- chunk of code (m) and the current position in the byte string (n > m). 
+-- chunk of code (m) and the current position in the byte string (n > m).
 -- Lambdas generate a new chunk that is added at the end of the code, while that
 -- address is pushed to the stack at the location where the lambda was defined.
 generate' :: Int -> Int -> [Token] -> C.ByteString
@@ -128,8 +129,9 @@ generate' m n ((Global c):xs) =
   in C.append c' (generate' m (n + C.length c') xs)
 generate' m n ((Lambda ys _):xs) =
   let xs' = generate' m (n + 4) xs
-      m' = n + 4 + C.length xs'
-      ys' = generate' m' m' ys
+      m' = n + C.length xs'
+      m'' = m' + n_length m'
+      ys' = generate' m'' m'' ys
   in C.append (generate'' $ LiteralNumber m') $ C.append xs' ys'
 
 -- Helper function to generate the code for literals (primitives, numbers and
@@ -141,7 +143,33 @@ generate'' (Function op) = C.singleton $ opcode op
 generate'' (LiteralString s) =
   C.append (generate'' $ Function Puts) $
     C.append (generate'' $ LiteralNumber $ C.length s) s
-generate'' (LiteralNumber n) =
-  C.pack $ map chr $
-    (shift (n .&. 0x7f000000) (-24)) : (shift (n .&. 0xff0000) (-16)) :
-    (shift (n .&. 0xff00) (-8)) : (n .&. 0xff) : []
+generate'' (LiteralNumber n) = C.pack $ map chr $ utf8_encode n
+
+-- Length of a generated number
+n_length :: Int -> Int
+n_length n = let n' = n_length' n in n_length' $ n + n'
+
+n_length' :: Int -> Int
+n_length' n
+  | n <= 0x7f       = 1
+  | n <= 0x7ff      = 2
+  | n <= 0xffff     = 3
+  | n <= 0x1fffff   = 4
+  | n <= 0x3fffffff = 5
+  | otherwise       = 6
+
+-- Encode a 31-bit number using the utf-8 scheme for multi-byte characters
+utf8_encode :: Int -> [Int]
+utf8_encode n
+  | n <= 0x7f       = [n]
+  | n <= 0x7ff      = utf8_encode' 0xc0 2 n
+  | n <= 0xffff     = utf8_encode' 0xe0 3 n
+  | n <= 0x1fffff   = utf8_encode' 0xf0 4 n
+  | n <= 0x3fffffff = utf8_encode' 0xf8 5 n
+  | otherwise       = utf8_encode' 0xfc 6 n
+
+utf8_encode' :: Int -> Int -> Int -> [Int]
+utf8_encode' _ 0 _ = []
+utf8_encode' mask m n =
+  (mask .|. ((n .&. (2 ^ (m * 6) - 1)) `shift` ((1 - m) * 6))) :
+  utf8_encode' 0x80 (m - 1) n

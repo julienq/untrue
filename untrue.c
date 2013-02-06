@@ -36,8 +36,37 @@ void call_lambda(machine *m, int v) {
 }
 
 int read_int(machine *m) {
-  return (m->ram[m->ip++] << 24) + (m->ram[m->ip++] << 16) +
-    (m->ram[m->ip++] << 8) + m->ram[m->ip];
+  if (m->ram[m->ip] < 0x80) {
+    return m->ram[m->ip];
+  }
+  if (m->ram[m->ip] < 0xe0) {
+    return ((0x1f & m->ram[m->ip++]) << 6) |
+      (0x3f & m->ram[m->ip]);
+  }
+  if (m->ram[m->ip] < 0xf0) {
+    return ((0xf & m->ram[m->ip++]) << 12) |
+      ((0x3f & m->ram[m->ip++]) << 6) |
+      (0x3f & m->ram[m->ip]);
+  }
+  if (m->ram[m->ip] < 0xf8) {
+    return ((0x7 & m->ram[m->ip++]) << 18) |
+      ((0x3f & m->ram[m->ip++]) << 12) |
+      ((0x3f & m->ram[m->ip++]) << 6) |
+      (0x3f & m->ram[m->ip]);
+  }
+  if (m->ram[m->ip] < 0xfc) {
+    return ((0x3 & m->ram[m->ip++]) << 24) |
+      ((0x3f & m->ram[m->ip++]) << 18) |
+      ((0x3f & m->ram[m->ip++]) << 12) |
+      ((0x3f & m->ram[m->ip++]) << 6) |
+      (0x3f & m->ram[m->ip]);
+  }
+  return ((0x1 & m->ram[m->ip++]) << 30) |
+    ((0x3f & m->ram[m->ip++]) << 24) |
+    ((0x3f & m->ram[m->ip++]) << 18) |
+    ((0x3f & m->ram[m->ip++]) << 12) |
+    ((0x3f & m->ram[m->ip++]) << 6) |
+    (0x3f & m->ram[m->ip]);
 }
 
 void call(machine *m, int r) {
@@ -50,7 +79,7 @@ void call(machine *m, int r) {
 #endif
     unsigned char op = m->ram[m->ip];
     int v;
-    if (op < Ret) {
+    if (op < 0x80 || op > 0xbf) {
       push(m, read_int(m));
 #ifdef TRACE
       fprintf(stderr, "Push [%08x ...]\n", m->stack[m->sp]);
@@ -217,10 +246,7 @@ void dump_ram(machine *m) {
   size_t n;
   for (size_t i = 0; i < m->cap; ++i) {
     fprintf(stdout, "%08zx ", i);
-    if (m->ram[i] < Ret) {
-      n = m->ram[i++] << 24 | m->ram[i++] << 16 | m->ram[i++] << 8 | m->ram[i];
-      fprintf(stdout, "%08zx\n", n);
-    } else if (m->ram[i] == Ret) {
+    if (m->ram[i] == Ret) {
       fprintf(stdout, "Ret\n");
     } else if (m->ram[i] == Add) {
       fprintf(stdout, "Add\n");
@@ -279,6 +305,39 @@ void dump_ram(machine *m) {
       fprintf(stdout, "Putc\n");
     } else if (m->ram[i] == Getc) {
       fprintf(stdout, "Getc\n");
+    } else if (m->ram[i] < 0x80) {
+      fprintf(stdout, "0x%02x\n", m->ram[i]);
+    } else if (m->ram[i] > 0xbf) {
+      if (m->ram[i] < 0xe0) {
+        fprintf(stdout, "0x%04x\n",
+            ((0x1f & m->ram[i++]) << 6) | (0x3f & m->ram[i]));
+      } else if (m->ram[i] < 0xf0) {
+        fprintf(stdout, "0x%04x\n",
+            ((0xf & m->ram[i++]) << 12) |
+            ((0x3f & m->ram[i++]) << 6) |
+            (0x3f & m->ram[i]));
+      } else if (m->ram[i] < 0xf8) {
+        fprintf(stdout, "0x%06x\n",
+            ((0x7 & m->ram[i++]) << 18) |
+            ((0x3f & m->ram[i++]) << 12) |
+            ((0x3f & m->ram[i++]) << 6) |
+            (0x3f & m->ram[i]));
+      } else if (m->ram[i] < 0xfc) {
+        fprintf(stdout, "0x%07x\n",
+            ((0x3 & m->ram[i++]) << 24) |
+            ((0x3f & m->ram[i++]) << 18) |
+            ((0x3f & m->ram[i++]) << 12) |
+            ((0x3f & m->ram[i++]) << 6) |
+            (0x3f & m->ram[i]));
+      } else {
+        fprintf(stdout, "0x%08x\n",
+            ((0x3 & m->ram[i++]) << 30) |
+            ((0x3f & m->ram[i++]) << 24) |
+            ((0x3f & m->ram[i++]) << 18) |
+            ((0x3f & m->ram[i++]) << 12) |
+            ((0x3f & m->ram[i++]) << 6) |
+            (0x3f & m->ram[i]));
+      }
     }
   }
 }
