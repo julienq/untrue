@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <termios.h>
+#include <unistd.h>
 
-#define STACK_SIZE 256
+#define STACK_SIZE 2048
 #define MEMORY_INCR 256
 
 typedef struct {
@@ -14,7 +16,7 @@ typedef struct {
 } machine;
 
 enum { Ret = 0x80, Add, Sub, Mul, Div, Neg, Eq, Gt, And, Or, Not, Store, Fetch,
-  Call, Dup, Drop, Swap, Rot, Pick, If, While, Puts, Puti, Putc, Getc };
+  Call, Dup, Drop, Swap, Rot, Pick, If, While, Puts, Puti, Putc, Getc, Nop };
 
 void push(machine *m, int v) {
   m->stack[--m->sp] = v;
@@ -36,37 +38,8 @@ void call_lambda(machine *m, int v) {
 }
 
 int read_int(machine *m) {
-  if (m->ram[m->ip] < 0x80) {
-    return m->ram[m->ip];
-  }
-  if (m->ram[m->ip] < 0xe0) {
-    return ((0x1f & m->ram[m->ip++]) << 6) |
-      (0x3f & m->ram[m->ip]);
-  }
-  if (m->ram[m->ip] < 0xf0) {
-    return ((0xf & m->ram[m->ip++]) << 12) |
-      ((0x3f & m->ram[m->ip++]) << 6) |
-      (0x3f & m->ram[m->ip]);
-  }
-  if (m->ram[m->ip] < 0xf8) {
-    return ((0x7 & m->ram[m->ip++]) << 18) |
-      ((0x3f & m->ram[m->ip++]) << 12) |
-      ((0x3f & m->ram[m->ip++]) << 6) |
-      (0x3f & m->ram[m->ip]);
-  }
-  if (m->ram[m->ip] < 0xfc) {
-    return ((0x3 & m->ram[m->ip++]) << 24) |
-      ((0x3f & m->ram[m->ip++]) << 18) |
-      ((0x3f & m->ram[m->ip++]) << 12) |
-      ((0x3f & m->ram[m->ip++]) << 6) |
-      (0x3f & m->ram[m->ip]);
-  }
-  return ((0x1 & m->ram[m->ip++]) << 30) |
-    ((0x3f & m->ram[m->ip++]) << 24) |
-    ((0x3f & m->ram[m->ip++]) << 18) |
-    ((0x3f & m->ram[m->ip++]) << 12) |
-    ((0x3f & m->ram[m->ip++]) << 6) |
-    (0x3f & m->ram[m->ip]);
+  return (m->ram[m->ip++] << 24) + (m->ram[m->ip++] << 16) +
+    (m->ram[m->ip++] << 8) + m->ram[m->ip];
 }
 
 void call(machine *m, int r) {
@@ -79,7 +52,7 @@ void call(machine *m, int r) {
 #endif
     unsigned char op = m->ram[m->ip];
     int v;
-    if (op < 0x80 || op > 0xbf) {
+    if (op < Ret) {
       push(m, read_int(m));
 #ifdef TRACE
       fprintf(stderr, "Push [%08x ...]\n", m->stack[m->sp]);
@@ -129,12 +102,12 @@ void call(machine *m, int r) {
       fprintf(stderr, "Gt [%08x ...]\n", m->stack[m->sp]);
 #endif
     } else if (op == And) {
-      push(m, pop(m) & pop(m));
+      push(m, pop(m) != -1 && pop(m) != -1 ? 0 : ~0);
 #ifdef TRACE
       fprintf(stderr, "And [%08x ...]\n", m->stack[m->sp]);
 #endif
     } else if (op == Or) {
-      push(m, pop(m) | pop(m));
+      push(m, pop(m) != -1 || pop(m) != -1 ? 0 : ~0);
 #ifdef TRACE
       fprintf(stderr, "Or [%08x ...]\n", m->stack[m->sp]);
 #endif
@@ -203,7 +176,7 @@ void call(machine *m, int r) {
 #ifdef TRACE
       fprintf(stderr, "If [%08x ...] -> %08x\n", m->stack[m->sp], v);
 #endif
-      if (pop(m) == 0) {
+      if (pop(m) != -1) {
         call_lambda(m, v);
       }
     } else if (op == While) {
@@ -214,7 +187,7 @@ void call(machine *m, int r) {
       fprintf(stderr, "While [%08x ...] -> %08x\n", m->stack[m->sp], v);
 #endif
         call_lambda(m, w);
-        if (pop(m) != 0) {
+        if (pop(m) == -1) {
           break;
         }
         call_lambda(m, v);
@@ -233,9 +206,14 @@ void call(machine *m, int r) {
     } else if (op == Putc) {
       fprintf(stdout, "%c", (unsigned char)pop(m));
     } else if (op == Getc) {
-      push(m, fgetc(stdin));
+      int c = getchar();
+      push(m, c);
 #ifdef TRACE
       fprintf(stderr, "Getc (%c)\n", m->stack[m->sp]);
+#endif
+    } else if (op == Nop) {
+#ifdef TRACE
+      fprintf(stderr, "Nop\n");
 #endif
     }
     ++m->ip;
@@ -246,7 +224,10 @@ void dump_ram(machine *m) {
   size_t n;
   for (size_t i = 0; i < m->cap; ++i) {
     fprintf(stdout, "%08zx ", i);
-    if (m->ram[i] == Ret) {
+    if (m->ram[i] < Ret) {
+      n = m->ram[i++] << 24 | m->ram[i++] << 16 | m->ram[i++] << 8 | m->ram[i];
+      fprintf(stdout, "%08zx\n", n);
+    } else if (m->ram[i] == Ret) {
       fprintf(stdout, "Ret\n");
     } else if (m->ram[i] == Add) {
       fprintf(stdout, "Add\n");
@@ -305,44 +286,27 @@ void dump_ram(machine *m) {
       fprintf(stdout, "Putc\n");
     } else if (m->ram[i] == Getc) {
       fprintf(stdout, "Getc\n");
-    } else if (m->ram[i] < 0x80) {
-      fprintf(stdout, "0x%02x\n", m->ram[i]);
-    } else if (m->ram[i] > 0xbf) {
-      if (m->ram[i] < 0xe0) {
-        fprintf(stdout, "0x%04x\n",
-            ((0x1f & m->ram[i++]) << 6) | (0x3f & m->ram[i]));
-      } else if (m->ram[i] < 0xf0) {
-        fprintf(stdout, "0x%04x\n",
-            ((0xf & m->ram[i++]) << 12) |
-            ((0x3f & m->ram[i++]) << 6) |
-            (0x3f & m->ram[i]));
-      } else if (m->ram[i] < 0xf8) {
-        fprintf(stdout, "0x%06x\n",
-            ((0x7 & m->ram[i++]) << 18) |
-            ((0x3f & m->ram[i++]) << 12) |
-            ((0x3f & m->ram[i++]) << 6) |
-            (0x3f & m->ram[i]));
-      } else if (m->ram[i] < 0xfc) {
-        fprintf(stdout, "0x%07x\n",
-            ((0x3 & m->ram[i++]) << 24) |
-            ((0x3f & m->ram[i++]) << 18) |
-            ((0x3f & m->ram[i++]) << 12) |
-            ((0x3f & m->ram[i++]) << 6) |
-            (0x3f & m->ram[i]));
-      } else {
-        fprintf(stdout, "0x%08x\n",
-            ((0x3 & m->ram[i++]) << 30) |
-            ((0x3f & m->ram[i++]) << 24) |
-            ((0x3f & m->ram[i++]) << 18) |
-            ((0x3f & m->ram[i++]) << 12) |
-            ((0x3f & m->ram[i++]) << 6) |
-            (0x3f & m->ram[i]));
-      }
+    } else if (m->ram[i] == Nop) {
+      fprintf(stdout, "Nop\n");
     }
   }
 }
 
 int main(int argc, char *argv[]) {
+  if (argc < 1) {
+    return 1;
+  }
+  FILE *f = strcmp(argv[1], "-") == 0 ? stdin : fopen(argv[1], "r");
+  if (!f) {
+    return 1;
+  }
+  static struct termios oldt, newt;
+  tcgetattr(STDIN_FILENO, &oldt);
+  newt = oldt;
+  if (strcmp(argv[1], "-") != 0) {
+    newt.c_lflag &= ~(ICANON);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+  }
   machine m;
   size_t n = 0;
   m.cap = MEMORY_INCR;
@@ -350,24 +314,19 @@ int main(int argc, char *argv[]) {
   m.sp = STACK_SIZE;
   m.ram = (unsigned char *)malloc(m.cap);
   m.stack = (int *)malloc(sizeof(int) * STACK_SIZE);
-  if (argc > 1) {
-    FILE *f = strcmp(argv[1], "-") == 0 ? stdin : fopen(argv[1], "r");
-    if (f) {
-      for (unsigned char c = fgetc(f); !feof(f); c = fgetc(f)) {
-        if (n == m.cap) {
-          m.cap += MEMORY_INCR;
-          m.ram = (unsigned char *)realloc(m.ram, m.cap);
-        }
-        m.ram[n++] = c;
-      }
-      m.cap = n;
-      if (argc > 2 && strcmp(argv[2], "dump") == 0) {
-        dump_ram(&m);
-      } else {
-        call(&m, m.cap);
-      }
-      return 0;
+  for (unsigned char c = fgetc(f); !feof(f); c = fgetc(f)) {
+    if (n == m.cap) {
+      m.cap += MEMORY_INCR;
+      m.ram = (unsigned char *)realloc(m.ram, m.cap);
     }
+    m.ram[n++] = c;
   }
-  return 1;
+  m.cap = n;
+  if (argc > 2 && strcmp(argv[2], "dump") == 0) {
+    dump_ram(&m);
+  } else {
+    call(&m, m.cap);
+  }
+  tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+  return 0;
 }
