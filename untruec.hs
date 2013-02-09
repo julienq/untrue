@@ -15,7 +15,7 @@ main = do
 -- no opcode for push.
 data Primitive = Ret | Add | Sub | Mul | Div | Neg | Eq | Gt | And | Or | Not |
                  Store | Fetch | Call | Dup | Drop | Swap | Rot | Pick | If |
-                 While | Puts | Puti | Putc | Getc
+                 While | Puts | Puti | Putc | Getc | Nop
   deriving (Show, Eq)
 
 -- Lookup a primitive from its surface form (one character)
@@ -36,7 +36,7 @@ opcode p =
               (Not, 0x8a), (Store, 0x8b), (Fetch, 0x8c), (Call, 0x8d),
               (Dup, 0x8e), (Drop, 0x8f), (Swap, 0x90), (Rot, 0x91),
               (Pick, 0x92), (If, 0x93), (While, 0x94), (Puts, 0x95),
-              (Puti, 0x96), (Putc, 0x97), (Getc, 0x98)]
+              (Puti, 0x96), (Putc, 0x97), (Getc, 0x98), (Nop, 0x99)]
 
 -- The tokens: a primitive function (e.g. +, !, &c.), a literal string (between
 -- double quotes; will produce Puts), a literal number (implicit push), a global
@@ -61,9 +61,10 @@ data TokenizerState = Chunk | StringToken C.ByteString | NumberToken Int |
 tokenize :: B.ByteString -> Token
 tokenize s =
   let globals = [LiteralNumber 0 | x <- ['a' .. 'z']]
-      start = 6 + 4 * length globals
+      start = 8 + 4 * length globals
   in tokenize' Chunk
-       (Lambda ([LiteralNumber start, Function Call, Function Ret] ++ globals)
+       (Lambda ([LiteralNumber start, Function Call, Function Ret,
+                 Function Nop, Function Nop] ++ globals)
        Nothing) (C.unpack s)
 
 -- The tokenizer keeps track of its state and the current lambda being
@@ -111,7 +112,7 @@ generate :: Token -> C.ByteString
 generate (Lambda xs _) = generate' 0 0 xs
 
 -- Generate code for a list of token. Keep track of the start location of that
--- chunk of code (m) and the current position in the byte string (n > m). 
+-- chunk of code (m) and the current position in the byte string (n > m).
 -- Lambdas generate a new chunk that is added at the end of the code, while that
 -- address is pushed to the stack at the location where the lambda was defined.
 generate' :: Int -> Int -> [Token] -> C.ByteString
@@ -124,7 +125,7 @@ generate' m n ((LiteralNumber n'):xs) =
   let n'' = generate'' $ LiteralNumber n'
   in C.append n'' (generate' m (n + C.length n'') xs)
 generate' m n ((Global c):xs) =
-  let c' = generate'' $ LiteralNumber $ 4 * (ord c - ord 'a') + 6
+  let c' = generate'' $ LiteralNumber $ 4 * (ord c - ord 'a') + 8
   in C.append c' (generate' m (n + C.length c') xs)
 generate' m n ((Lambda ys _):xs) =
   let xs' = generate' m (n + 4) xs

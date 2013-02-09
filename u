@@ -1,0 +1,2 @@
+#!/bin/sh
+./untruec < $1 > $1c && ./untrue $1c
